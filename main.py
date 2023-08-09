@@ -30,7 +30,7 @@ parser.add_argument('--val-img-dir', type=str, help='Path of validation image di
 parser.add_argument('--val-mask-dir', type=str, help='Path of validation mask directory')
 parser.add_argument('--img-size', type=int, default=256, help='Size of images.')
 parser.add_argument('--strong-aug', type=bool, default=False, help='Whether to perform strong augmentation.')
-parser.add_argument('--model', type=str, default='MFPAN', help='Name of model.')
+parser.add_argument('--model', type=str, default='MFPANet', help='Name of model.')
 parser.add_argument('--pretrained', default=False, help='Whether to use the pretrained model.')
 parser.add_argument('--norm-layer', type=str, default='gn', help='Available options are ["bn", "gn", "in"], represent batch, group and instance normalization, respectively.')
 parser.add_argument('--workers', type=int, default=0)
