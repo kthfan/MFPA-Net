@@ -5,18 +5,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Helper function to enable loss function to be flexibly used for 
-# pytorch version
+# channels first format, get height, width axis
 def identify_axis(shape):
     return list(range(2, len(shape)))
 
-
+# convert to one hot encoding
 def convert_prob(y_pred, y_true, activation):
     # convert to [batch, classes, ...]
     if len(y_true.shape) == len(y_pred.shape) - 1:
-        y_true = F.one_hot(y_true, num_classes=y_pred.shape[1])
-        y_true = y_true.to(y_pred.dtype).to(y_pred.device)
-        y_true = y_true[:, None].transpose(1, -1)[..., 0]
+        if y_pred.shape[1] == 1: # binary classification
+            y_true = y_true[:, None].to(y_pred.dtype)
+        else:                    # mulit-class classification
+            y_true = F.one_hot(y_true, num_classes=y_pred.shape[1])
+            y_true = y_true.to(y_pred.dtype).to(y_pred.device)
+            y_true = y_true[:, None].transpose(1, -1)[..., 0]
     if activation == 'softmax':
         y_pred = torch.softmax(y_pred, dim=1)
     elif activation == 'sigmoid':
@@ -47,9 +49,9 @@ def dice_coefficient(logits, targets, smooth = 0.000001, activation='sigmoid', r
     y_pred, y_true = convert_prob(logits, targets, activation)
     axis = identify_axis(y_true.shape)
 
-    intersection = (y_pred * y_true).sum(dim=axis)                          
-    dice_class = (2.*intersection + smooth) / (y_pred.sum(dim=axis) + y_true.sum(dim=axis) + smooth)  
-        
+    intersection = (y_pred * y_true).sum(dim=axis)
+    dice_class = (2.*intersection + smooth) / (y_pred.sum(dim=axis) + y_true.sum(dim=axis) + smooth)
+
     if reduction == 'none':
         return dice_class
     else: # Average class scores
@@ -69,12 +71,12 @@ def tversky_index(logits, targets, delta = 0.7, smooth = 0.000001, activation='s
     """
     y_pred, y_true = convert_prob(logits, targets, activation)
     axis = identify_axis(y_true.shape)
-    # Calculate true positives (tp), false negatives (fn) and false positives (fp)   
+    # Calculate true positives (tp), false negatives (fn) and false positives (fp)
     tp = torch.sum(y_true * y_pred, dim=axis)
     fn = torch.sum(y_true * (1-y_pred), dim=axis)
     fp = torch.sum((1-y_true) * y_pred, dim=axis)
     tversky_class = (tp + smooth) / (tp + delta*fn + (1-delta)*fp + smooth)
-    
+
     if reduction == 'none':
         return tversky_class
     else: # Average class scores
@@ -92,7 +94,7 @@ def cross_entropy(logits, targets, class_weight=None, sample_weight=None, activa
             class_weight = 2 * class_weight / class_weight.sum()
         elif activation == 'softmax':
             class_weight = None
-        
+
     if sample_weight == None:
         if activation == 'sigmoid':
             loss = F.binary_cross_entropy_with_logits(logits, y_true, class_weight, reduction=reduction)
@@ -111,7 +113,7 @@ def cross_entropy(logits, targets, class_weight=None, sample_weight=None, activa
 
             loss = - class_weight[1] * y_true * positive_weight * F.logsigmoid(logits) + \
                     - class_weight[0] * (1 - y_true) * negative_weight * F.logsigmoid(-logits)
-            
+
         elif activation == 'softmax':
             if class_weight is None:
                 class_weight = 1.
@@ -128,7 +130,7 @@ def cross_entropy(logits, targets, class_weight=None, sample_weight=None, activa
 ################################
 class DiceLoss(nn.Module):
     """Dice loss originates from Sørensen–Dice coefficient, which is a statistic developed in 1940s to gauge the similarity between two samples.
-    
+
     Parameters
     ----------
     delta : float, optional
@@ -143,17 +145,17 @@ class DiceLoss(nn.Module):
         self.smooth = smooth
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
-        return dice_loss(logits, targets, smooth=self.smooth, 
+        return dice_loss(logits, targets, smooth=self.smooth,
                          activation=self.activation, reduction=self.reduction)
 
 def dice_loss(logits, targets, smooth = 0.000001, activation='sigmoid', reduction='mean'):
-    dice_class = dice_coefficient(logits, targets, smooth=smooth, 
+    dice_class = dice_coefficient(logits, targets, smooth=smooth,
                                   activation=activation, reduction='none')
     dice_class = 1 - dice_class
     return apply_reduction(dice_class, reduction)
-        
+
 
 ################################
 #         Tversky loss         #
@@ -176,9 +178,9 @@ class TverskyLoss(nn.Module):
         self.smooth = smooth
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
-        return tversky_loss(logits, targets, delta=self.delta, smooth=self.smooth, 
+        return tversky_loss(logits, targets, delta=self.delta, smooth=self.smooth,
                             activation=self.activation, reduction=self.reduction)
 
 def tversky_loss(logits, targets, delta = 0.7, smooth = 0.000001, activation='sigmoid', reduction='mean'):
@@ -200,7 +202,7 @@ class ComboLoss(nn.Module):
         controls weighting of dice and cross-entropy loss., by default 0.5
     beta : float, optional
         beta > 0.5 penalises false negatives more than false positives., by default 0.5
-    eps : 
+    eps :
         Small fractional to ensure numerical stability. by default 1e-7
     """
     def __init__(self, alpha=0.5, beta=0.5, smooth=0.000001, activation='sigmoid', reduction='mean'):
@@ -212,7 +214,7 @@ class ComboLoss(nn.Module):
         self.smooth = smooth
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
         return combo_loss(logits, targets, alpha=self.alpha, beta=self.beta, smooth=self.smooth,
                             activation=self.activation, reduction=self.reduction)
@@ -220,7 +222,7 @@ class ComboLoss(nn.Module):
 def combo_loss(logits, targets, alpha=0.5, beta=0.5, smooth=0.000001, activation='sigmoid', reduction='mean'):
     y_pred, y_true = convert_prob(logits, targets, activation)
     dice = dice_coefficient(y_pred, y_true, smooth=smooth, activation=None, reduction=reduction)
-    ce = cross_entropy(logits, targets, class_weight=beta, activation=activation, reduction=reduction) 
+    ce = cross_entropy(logits, targets, class_weight=beta, activation=activation, reduction=reduction)
     combo_loss = (alpha * ce) - ((1 - alpha) * dice)
     return combo_loss
 
@@ -245,14 +247,14 @@ class FocalTverskyLoss(nn.Module):
         self.smooth = smooth
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
-        return focal_tversky_loss(logits, targets, delta=self.delta, gamma=self.gamma, smooth=self.smooth, 
+        return focal_tversky_loss(logits, targets, delta=self.delta, gamma=self.gamma, smooth=self.smooth,
                                   activation=self.activation, reduction=self.reduction)
 
 def focal_tversky_loss(logits, targets, delta=0.7, gamma=0.75, smooth=0.000001, activation='sigmoid', reduction='mean'):
-    tversky_class = tversky_index(logits, targets, delta=delta, smooth=smooth, 
-                                  activation=activation, reduction='none')    
+    tversky_class = tversky_index(logits, targets, delta=delta, smooth=smooth,
+                                  activation=activation, reduction='none')
     focal_tversky = torch.pow((1-tversky_class), gamma)
     return apply_reduction(focal_tversky, reduction)
 
@@ -277,7 +279,7 @@ class FocalLoss(nn.Module):
         self.gamma_f = gamma_f
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
         return focal_loss(logits, targets, alpha=self.alpha, gamma_f=self.gamma_f,
                           activation=self.activation, reduction=self.reduction)
@@ -285,17 +287,17 @@ class FocalLoss(nn.Module):
 def focal_loss(logits, targets, alpha=None, gamma_f=2., activation='sigmoid', reduction='mean'):
     y_pred, _ = convert_prob(logits, targets, activation)
     if activation == 'sigmoid':
-        focal = cross_entropy(logits, targets, class_weight=alpha, 
-                                sample_weight=[torch.pow(y_pred, gamma_f), torch.pow(1 - y_pred, gamma_f)], 
+        focal = cross_entropy(logits, targets, class_weight=alpha,
+                                sample_weight=[torch.pow(y_pred, gamma_f), torch.pow(1 - y_pred, gamma_f)],
                                 activation=activation, reduction=reduction)
     elif activation == 'softmax':
-        focal = cross_entropy(logits, targets, class_weight=alpha, 
-                                sample_weight=torch.pow(1 - y_pred, gamma_f), 
+        focal = cross_entropy(logits, targets, class_weight=alpha,
+                                sample_weight=torch.pow(1 - y_pred, gamma_f),
                                 activation=activation, reduction=reduction)
     else:
         raise ValueError(f'Invalid activation {activation}.')
     return focal
-        
+
 
 ################################
 #       Symmetric Focal loss      #
@@ -317,13 +319,13 @@ class SymmetricFocalLoss(nn.Module):
         self.gamma = gamma
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
         return symmetric_focal_loss(logits, targets, delta=self.delta, gamma=self.gamma,
                                     activation=self.activation, reduction=self.reduction)
 
 def symmetric_focal_loss(logits, targets, delta=0.7, gamma=2., activation='sigmoid', reduction='mean'):
-    return focal_loss(logits, targets, alpha=delta, gamma_f=gamma, 
+    return focal_loss(logits, targets, alpha=delta, gamma_f=gamma,
                         activation=activation, reduction=reduction)
 
 
@@ -348,23 +350,23 @@ class SymmetricFocalTverskyLoss(nn.Module):
         self.smooth = smooth
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
-        return symmetric_focal_tversky_loss(logits, targets, delta=self.delta, gamma=self.gamma, smooth=self.smooth, 
+        return symmetric_focal_tversky_loss(logits, targets, delta=self.delta, gamma=self.gamma, smooth=self.smooth,
                                             activation=self.activation, reduction=self.reduction)
 
 def symmetric_focal_tversky_loss(logits, targets, delta=0.7, gamma=0.75, smooth=0.000001, activation='sigmoid', reduction='mean'):
     if activation == 'sigmoid':
         _, y_true = convert_prob(logits, targets, None)
-        tversky_back = tversky_index(-logits, 1-y_true, delta=delta, smooth=smooth, 
+        tversky_back = tversky_index(-logits, 1-y_true, delta=delta, smooth=smooth,
                                         activation=activation, reduction='none')
-        tversky_fore = tversky_index(logits, y_true, delta=delta, smooth=smooth, 
+        tversky_fore = tversky_index(logits, y_true, delta=delta, smooth=smooth,
                                         activation=activation, reduction='none')
         focal_tversky_back = (1 - tversky_back) * torch.pow(1 - tversky_back, -gamma)
         focal_tversky_fore = (1 - tversky_fore) * torch.pow(1 - tversky_fore, -gamma)
         focal_tversky = 0.5 * (focal_tversky_back + focal_tversky_fore)
     elif activation == 'softmax':
-        tversky = tversky_index(logits, targets, delta=delta, smooth=smooth, 
+        tversky = tversky_index(logits, targets, delta=delta, smooth=smooth,
                                         activation=activation, reduction='none')
         focal_tversky = (1 - tversky) * torch.pow(1 - tversky, -gamma)
     else:
@@ -394,7 +396,7 @@ class AsymmetricFocalLoss(nn.Module):
         self.background_axis = background_axis
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
         return asymmetric_focal_loss(logits, targets, delta=self.delta, gamma=self.gamma, background_axis=self.background_axis,
                                      activation=self.activation, reduction=self.reduction)
@@ -402,15 +404,20 @@ class AsymmetricFocalLoss(nn.Module):
 def asymmetric_focal_loss(logits, targets, delta=0.7, gamma=2., background_axis=None, activation='sigmoid', reduction='mean'):
     y_pred, _ = convert_prob(logits, targets, activation)
     if activation == 'sigmoid':
-        focal = cross_entropy(logits, targets, class_weight=delta, 
-                                sample_weight=[torch.pow(y_pred, gamma), torch.ones_like(y_pred)], 
+        n_gamma = torch.full([1, logits.shape[1]] + (len(logits.shape) - 2) * [1], gamma, dtype=logits.dtype, device=logits.device)
+        p_gamma = torch.zeros([1, logits.shape[1]] + (len(logits.shape) - 2) * [1], dtype=logits.dtype, device=logits.device)
+        if background_axis is not None:
+            n_gamma[:, background_axis] = 0
+            p_gamma[:, background_axis] = gamma
+        focal = cross_entropy(logits, targets, class_weight=delta,
+                                sample_weight=[torch.pow(y_pred, n_gamma), torch.pow(1 - y_pred, p_gamma)],
                                 activation=activation, reduction=reduction)
     elif activation == 'softmax':
-        gamma = torch.full([1, logits.shape[1]] + (len(logits.shape) - 2) * [1], gamma, dtype=logits.dtype, device=logits.device)
+        gamma = torch.zeros([1, logits.shape[1]] + (len(logits.shape) - 2) * [1], dtype=logits.dtype, device=logits.device)
         if background_axis is not None:
-            gamma[:, background_axis] = 0
-        focal = cross_entropy(logits, targets, class_weight=delta, 
-                                sample_weight=torch.pow(1 - y_pred, gamma), 
+            gamma[:, background_axis] = gamma
+        focal = cross_entropy(logits, targets, class_weight=delta,
+                                sample_weight=torch.pow(1 - y_pred, gamma),
                                 activation=activation, reduction=reduction)
     else:
         raise ValueError(f'Invalid activation {activation}.')
@@ -440,22 +447,29 @@ class AsymmetricFocalTverskyLoss(nn.Module):
         self.background_axis = background_axis
         self.activation = activation
         self.reduction = reduction
-    
+
     def forward(self, logits, targets):
-        return asymmetric_focal_tversky_loss(logits, targets, delta=self.delta, gamma=self.gamma, smooth=self.smooth, 
+        return asymmetric_focal_tversky_loss(logits, targets, delta=self.delta, gamma=self.gamma, smooth=self.smooth,
                                              background_axis=self.background_axis, activation=self.activation, reduction=self.reduction)
 
-def asymmetric_focal_tversky_loss(logits, targets, delta=0.7, gamma=0.75, smooth=0.000001, 
+def asymmetric_focal_tversky_loss(logits, targets, delta=0.7, gamma=0.75, smooth=0.000001,
                                     background_axis=None, activation='sigmoid', reduction='mean'):
     if activation == 'sigmoid':
+        n_gamma = torch.zeros([1, logits.shape[1]], dtype=logits.dtype, device=logits.device)
+        p_gamma = torch.full([1, logits.shape[1]], gamma, dtype=logits.dtype, device=logits.device)
+        if background_axis is not None:
+            n_gamma[:, background_axis] = gamma
+            p_gamma[:, background_axis] = 0
+
         _, y_true = convert_prob(logits, targets, None)
-        tversky_back = tversky_index(-logits, 1-y_true, delta=delta, smooth=smooth, 
+        tversky_back = tversky_index(-logits, 1-y_true, delta=delta, smooth=smooth,
                                         activation=activation, reduction='none')
-        tversky_fore = tversky_index(logits, y_true, delta=delta, smooth=smooth, 
+        tversky_fore = tversky_index(logits, y_true, delta=delta, smooth=smooth,
                                         activation=activation, reduction='none')
-        focal_tversky_back = 1 - tversky_back
-        focal_tversky_fore = (1 - tversky_fore) * torch.pow(1 - tversky_fore, -gamma)
+        focal_tversky_back = (1 - tversky_back) * torch.pow(1 - tversky_back, -n_gamma)
+        focal_tversky_fore = (1 - tversky_fore) * torch.pow(1 - tversky_fore, -p_gamma)
         focal_tversky = 0.5 * (focal_tversky_back + focal_tversky_fore)
+
     elif activation == 'softmax':
         gamma = torch.full([1, logits.shape[1]], gamma, dtype=logits.dtype, device=logits.device)
         if background_axis is not None:
