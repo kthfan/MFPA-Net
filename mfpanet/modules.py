@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 from .drn import drn_a_50
 
-__all__ = ['MFPN', 'DAM', 'ASPP', 'MFPAN']
+__all__ = ['MFPANet', 'DAM', 'ASPP', 'MFPAN']
 
 class MFPN(nn.Module):
     def __init__(self, in_channels_list, out_channels=48):
@@ -184,7 +184,7 @@ class ASPP(nn.Module):
         res = torch.cat(res, dim=1)
         return self.project(res)
 
-class MFPAN(nn.Module):
+class MFPANet(nn.Module):
     def __init__(self, num_classes, pretrained=False):
         super().__init__()
         self.backbone = drn_a_50(pretrained=pretrained, num_classes=1000, out_middle=True)
