@@ -413,11 +413,11 @@ def asymmetric_focal_loss(logits, targets, delta=0.7, gamma=2., background_axis=
                                 sample_weight=[torch.pow(y_pred, n_gamma), torch.pow(1 - y_pred, p_gamma)],
                                 activation=activation, reduction=reduction)
     elif activation == 'softmax':
-        gamma = torch.zeros([1, logits.shape[1]] + (len(logits.shape) - 2) * [1], dtype=logits.dtype, device=logits.device)
+        gamma_ = torch.zeros([1, logits.shape[1]] + (len(logits.shape) - 2) * [1], dtype=logits.dtype, device=logits.device)
         if background_axis is not None:
-            gamma[:, background_axis] = gamma
+            gamma_[:, background_axis] = gamma
         focal = cross_entropy(logits, targets, class_weight=delta,
-                                sample_weight=torch.pow(1 - y_pred, gamma),
+                                sample_weight=torch.pow(1 - y_pred, gamma_),
                                 activation=activation, reduction=reduction)
     else:
         raise ValueError(f'Invalid activation {activation}.')
