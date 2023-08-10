@@ -1,11 +1,11 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .drn import drn_a_50
 
-__all__ = ['MFPANet', 'DAM', 'ASPP', 'MFPAN']
+__all__ = ['MFPN', 'DAM', 'ASPP', 'MFPANet']
+
 
 class MFPN(nn.Module):
     def __init__(self, in_channels_list, out_channels=48):
@@ -28,13 +28,14 @@ class MFPN(nn.Module):
             x = conv(x)
             if any([a != b for a, b in zip(x0.shape[2:], x.shape[2:])]):
                 x0 = F.interpolate(x0, x.shape[2:])
-            x0 = x0 + x    
+            x0 = x0 + x
             out_list.append(x0)
-        
+
         out_shape = out_list[-1].shape[2:]
-        out_list = [F.interpolate(out, out_shape) if any([a != b for a, b in zip(out.shape[2:], out_shape)]) else out 
+        out_list = [F.interpolate(out, out_shape) if any([a != b for a, b in zip(out.shape[2:], out_shape)]) else out
                     for out in out_list]
         return torch.cat(out_list, dim=1)
+
 
 class SAM(nn.Module):
     def __init__(self, in_channels, latent_channels=None):
@@ -56,12 +57,13 @@ class SAM(nn.Module):
         v = self.conv_v(x)
         v = v.view(b, self.in_channels, -1)
 
-        scale = 1 / (self.latent_channels)**0.25
-        m = torch.einsum("bcs, bct -> bst", scale*q, scale*k)
+        scale = 1 / (self.latent_channels) ** 0.25
+        m = torch.einsum("bcs, bct -> bst", scale * q, scale * k)
         m = F.softmax(m, dim=-1)
         a = torch.einsum('bst, bct -> bcs', m, v)
         a = a.view(b, self.in_channels, *spatial)
-        return self.gamma*a + x
+        return self.gamma * a + x
+
 
 class CAM(nn.Module):
     def __init__(self, in_channels):
@@ -73,16 +75,17 @@ class CAM(nn.Module):
         b, ch, *spatial = x.shape
         y = x.view(b, ch, -1)
 
-        scale = 1 / (y.shape[-1])**0.25
-        m = torch.einsum("bcs, bds -> bcd", scale*y, scale*y)
+        scale = 1 / (y.shape[-1]) ** 0.25
+        m = torch.einsum("bcs, bds -> bcd", scale * y, scale * y)
         m = F.softmax(m, dim=-1)
         a = torch.einsum('bcd, bds -> bcs', m, y)
         a = a.view(b, self.in_channels, *spatial)
-        return self.gamma*a + x
+        return self.gamma * a + x
+
 
 class DAM(nn.Module):
-    def __init__(self, in_channels, out_channels=None, sam_channels=None, cam_channels=None, 
-                    latent_channels=None, drop=0.1):
+    def __init__(self, in_channels, out_channels=None, sam_channels=None, cam_channels=None,
+                 latent_channels=None, drop=0.1):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
@@ -125,7 +128,6 @@ class DAM(nn.Module):
         return x
 
 
-
 #################################################################
 # extracted from https://github.com/VainF/DeepLabV3Plus-Pytorch #
 #################################################################
@@ -137,6 +139,7 @@ class ASPPConv(nn.Sequential):
             nn.ReLU(inplace=True)
         ]
         super(ASPPConv, self).__init__(*modules)
+
 
 class ASPPPooling(nn.Sequential):
     def __init__(self, in_channels, out_channels):
@@ -150,6 +153,7 @@ class ASPPPooling(nn.Sequential):
         size = x.shape[-2:]
         x = super(ASPPPooling, self).forward(x)
         return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
+
 
 class ASPP(nn.Module):
     def __init__(self, in_channels, out_channels=256, atrous_rates=[12, 24, 36]):
@@ -175,7 +179,7 @@ class ASPP(nn.Module):
             nn.Conv2d(5 * out_channels, out_channels, 1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.1),)
+            nn.Dropout(0.1), )
 
     def forward(self, x):
         res = []
@@ -184,14 +188,18 @@ class ASPP(nn.Module):
         res = torch.cat(res, dim=1)
         return self.project(res)
 
+
 class MFPANet(nn.Module):
     def __init__(self, num_classes, pretrained=False):
         super().__init__()
         self.backbone = drn_a_50(pretrained=pretrained, num_classes=1000, out_middle=True)
         self.backbone.num_classes = None
-        self.dam = DAM(2048, out_channels = 2048, 
-                       sam_channels = 2048 // 4, cam_channels = 2048 // 4, 
-                       latent_channels = 2048 // 4 // 8)
+        del self.backbone.avgpool
+        del self.backbone.fc
+
+        self.dam = DAM(2048, out_channels=2048,
+                       sam_channels=2048 // 4, cam_channels=2048 // 4,
+                       latent_channels=2048 // 4 // 8)
         self.aspp = ASPP(self.dam.out_channels, 256, [12, 24, 36])
         self.mfpn = MFPN([256, 512, 1024, 2048], 48)
         self.classifier = nn.Sequential(
@@ -200,7 +208,7 @@ class MFPANet(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(256, num_classes, 1)
         )
-    
+
     def forward(self, x_in):
         xd, fea_list = self.backbone(x_in)
         xd = self.dam(xd)
@@ -210,7 +218,4 @@ class MFPANet(nn.Module):
         x_out = self.classifier(x_out)
         x_out = F.interpolate(x_out, x_in.shape[2:])
         return x_out
-
-
-        
 
