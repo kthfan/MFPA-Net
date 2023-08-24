@@ -9,9 +9,9 @@ from copy import deepcopy
 def segmentation_metrics(logits, targets, activation='0-1', eps=1e-7, reduction='mean'):
     # convert targets to one hot encoding
     if len(targets.shape) == len(logits.shape) - 1:
-        if logits.shape[1] == 1:  # binary classification
+        if logits.shape[1] == 1: # binary classification
             y_true = targets[:, None].to(logits.dtype)
-        else:  # mulit-class classification
+        else:                    # mulit-class classification
             y_true = F.one_hot(targets, num_classes=logits.shape[1])
             y_true = y_true.to(logits.dtype).to(logits.device)
             y_true = y_true[:, None].transpose(1, -1)[..., 0]
@@ -23,24 +23,27 @@ def segmentation_metrics(logits, targets, activation='0-1', eps=1e-7, reduction=
     elif activation == 'sigmoid':
         y_pred = torch.sigmoid(logits)
     elif activation == '0-1':
-        y_pred = torch.argmax(logits, axis=1)
-        y_pred = F.one_hot(y_pred, num_classes=logits.shape[1])
-        y_pred = y_pred.to(logits.dtype).to(logits.device)
-        y_pred = y_pred[:, None].transpose(1, -1)[..., 0]
+        if logits.shape[1] == 1: # binary classification
+            y_pred = (logits > 0).to(logits.dtype).to(logits.device)
+        else:                    # mulit-class classification
+            y_pred = torch.argmax(logits, axis=1)
+            y_pred = F.one_hot(y_pred, num_classes=logits.shape[1])
+            y_pred = y_pred.to(logits.dtype).to(logits.device)
+            y_pred = y_pred[:, None].transpose(1, -1)[..., 0]
 
-    axis = list(range(2, len(logits.shape)))  # height and width
+    axis = list(range(2, len(logits.shape))) # height and width
     # compute true postive, false positive and false negative
     # use mean reduction instead of sum to ensure the numerical stability under float16
-    tp = torch.mean(y_true * y_pred, dim=axis)
-    fp = torch.mean(y_pred, dim=axis) - tp
-    fn = torch.mean(y_true, dim=axis) - tp
+    tp = torch.sum(y_true * y_pred, dim=axis)
+    fp = torch.sum(y_pred, dim=axis) - tp
+    fn = torch.sum(y_true, dim=axis) - tp
 
-    pixel_acc = (torch.mean(tp, dim=1) + eps) / (torch.mean(tp, dim=1) + torch.mean(fp, dim=1) + eps)
+    pixel_acc = (torch.sum(tp, dim=1) + eps) / (torch.sum(tp, dim=1) + torch.sum(fp, dim=1) + eps)
     iou = (tp + eps) / (fp + fn + tp + eps)
     dice = (2 * tp + eps) / (2 * tp + fp + fn + eps)
     precision = (tp + eps) / (tp + fp + eps)
     recall = (tp + eps) / (tp + fn + eps)
-
+    
     if reduction == 'mean':
         pixel_acc, iou, dice, precision, recall = pixel_acc.mean(), iou.mean(), dice.mean(), precision.mean(), recall.mean()
     return pixel_acc, iou, dice, precision, recall
