@@ -5,8 +5,17 @@ import torch.nn.functional as F
 
 from copy import deepcopy
 
+__all__ = ['segmentation_metrics',
+           'smart_group_norm',
+           'replace_batchnorm2d',
+           'adaptive_clip_grad',
+           'ModelEMA']
 
 def segmentation_metrics(logits, targets, activation='0-1', eps=1e-7, reduction='mean'):
+    ''' This method compute pixel_acc, iou, dice, precision, recall at the same time.
+        If the task is mulit-class classification, i.e. logits.shape == [batch, classes, H, W], 
+        this method outputs the are averaged along the classes.
+    '''
     # convert targets to one hot encoding
     if len(targets.shape) == len(logits.shape) - 1:
         if logits.shape[1] == 1: # binary classification
