@@ -189,19 +189,38 @@ class ASPP(nn.Module):
         return self.project(res)
 
 
+
 class MFPANet(nn.Module):
-    def __init__(self, num_classes, pretrained=False):
+    def __init__(self, num_classes, pretrained=False, backbone_name='drn_a_50'):
         super().__init__()
-        self.backbone = drn_a_50(pretrained=pretrained, num_classes=1000, out_middle=True)
+        assert backbone_name in ['drn_a_50', 'drn_c_26','drn_c_42', 'drn_c_58', 'drn_d_24', 'drn_d_38', 'drn_d_40', 'drn_d_54', 'drn_d_56', 'drn_d_105', 'drn_d_107']
+        self.num_classes = num_classes
+        self.backbone_name = backbone_name
+
+        if backbone_name == 'drn_a_50':
+            self.mid_channels = [256, 512, 1024, 2048]
+            self.latent_channels = 2048
+            self.fpn_index = [1, 2, 3, 4]
+        elif backbone_name in ['drn_c_26', 'drn_c_42', 'drn_d_24', 'drn_d_38', 'drn_d_40']:
+            self.mid_channels = [64, 128, 256, 512]
+            self.latent_channels = 512
+            self.fpn_index = [2, 3, 4, 5]
+        else:
+            self.mid_channels = [256, 512, 1024, 2048]
+            self.latent_channels = 512
+            self.fpn_index = [2, 3, 4, 5]
+
+        # set backbone
+        self.backbone = getattr(drn, backbone_name)(pretrained=pretrained, num_classes=1000, out_middle=True)
         self.backbone.num_classes = None
         del self.backbone.avgpool
         del self.backbone.fc
 
-        self.dam = DAM(2048, out_channels=2048,
-                       sam_channels=2048 // 4, cam_channels=2048 // 4,
-                       latent_channels=2048 // 4 // 8)
+        self.dam = DAM(self.latent_channels, out_channels = self.latent_channels,
+                       sam_channels = self.latent_channels // 4, cam_channels = self.latent_channels // 4,
+                       latent_channels = self.latent_channels // 4 // 8)
         self.aspp = ASPP(self.dam.out_channels, 256, [12, 24, 36])
-        self.mfpn = MFPN([256, 512, 1024, 2048], 48)
+        self.mfpn = MFPN(self.mid_channels, 48)
         self.classifier = nn.Sequential(
             nn.Conv2d(256 + 4 * 48, 256, 3, padding=1, bias=False),
             nn.BatchNorm2d(256),
@@ -213,9 +232,9 @@ class MFPANet(nn.Module):
         xd, fea_list = self.backbone(x_in)
         xd = self.dam(xd)
         xd = self.aspp(xd)
-        xm = self.mfpn(fea_list[1:])
+        xm = self.mfpn([fea_list[i] for i in self.fpn_index])
         x_out = torch.cat([xm, F.interpolate(xd, xm.shape[2:])], dim=1)
         x_out = self.classifier(x_out)
         x_out = F.interpolate(x_out, x_in.shape[2:])
         return x_out
-
+    
