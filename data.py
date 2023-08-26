@@ -9,7 +9,20 @@ import torch
 import json
 import cv2
 
+__all__ = [
+    'SegmentationDatasetWrapper',
+    'LabelmeDataset',
+    'BinarySegmentationDataset'
+]
+
 class SegmentationDatasetWrapper(torchvision.datasets.VisionDataset):
+    ''' Segmentation dataset wrapper used to apply augmentations on both images and masks.
+        Arguments:
+            dataset: A segmentation dataset such that "img, mask = dataset[i]".
+                     Note that the shape of output mask will be [1, H, W] if the shape of input mask is [H, W].
+            spatial_transform: This transformation will be applid on both image and mask.
+            color_transform: This transformation will only be applid on the image.
+    '''
     def __init__(self, dataset, spatial_transform=None, color_transform=None):
         super().__init__(root='')
         self.dataset = dataset
@@ -41,6 +54,14 @@ class SegmentationDatasetWrapper(torchvision.datasets.VisionDataset):
 
 
 class LabelmeDataset(torchvision.datasets.VisionDataset):
+    ''' Load the labelme annotations to the torch dataset.
+        Arguments:
+            json_roots: str or list of str. The directory of json files.
+            image_roots: str or list of str. The directory of images, each filename in image_roots corresponds to the filename in json_roots.
+            class_names: str or list of str. The class names will be included, otherwise will be excluded.
+            transform: Transformation on the images.
+            target_transform: Transformation on the masks
+    '''
     def __init__(self, json_roots, image_roots, class_names, transform=None, target_transform=None):
         if isinstance(json_roots, str):
             json_roots = [json_roots]
@@ -85,6 +106,7 @@ class LabelmeDataset(torchvision.datasets.VisionDataset):
 
     @staticmethod
     def extract_labelme_onehot(config, classnames):
+        ''' Create a one hot mask base on the config '''
         shapes = config['shapes']
         masks = np.zeros((len(classnames), config['imageHeight'], config['imageWidth']), dtype=np.float32)
         for entry in shapes:
@@ -98,6 +120,13 @@ class LabelmeDataset(torchvision.datasets.VisionDataset):
 
 
 class BinarySegmentationDataset(torchvision.datasets.VisionDataset):
+    '''' Load images and masks from directories.
+        Arguments:
+            image_roots: str or list of str. The directory of images.
+            mask_roots: str or list of str. The directory of masks.
+            transform: Transformation on the images.
+            target_transform: Transformation on the masks
+    '''
     def __init__(self, image_roots, mask_roots, transform=None, target_transform=None):
         if isinstance(image_roots, str):
             image_roots = [image_roots]
