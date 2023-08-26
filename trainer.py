@@ -7,9 +7,10 @@ from tqdm import tqdm
 
 from utils import segmentation_metrics, adaptive_clip_grad
 
+__all__ = ['SegmentationTrainer']
 
 class SegmentationTrainer:
-    def __init__(self, model, optimizer, criterion,
+    def __init__(self, model, optimizer, criterion, num_accum_steps=1,
                  lr_scheduler=None, use_cuda=None, use_amp=True, use_ema=False):
         ### set models ###
         self.model = model
@@ -20,6 +21,7 @@ class SegmentationTrainer:
         self.optimizer = optimizer
         self.criterion = criterion
         self.lr_scheduler = lr_scheduler
+        self.num_accum_steps = num_accum_steps
         self._train_count = 0
 
         self._initialize_cuda(use_cuda, use_amp)
@@ -123,8 +125,6 @@ class SegmentationTrainer:
         x, y = data
         #########################
 
-        ### optimizer.zero_grad() ###
-        self.optimizer.zero_grad()
         #############################
         with self.autocast():
             ### forward pass ###
@@ -134,14 +134,16 @@ class SegmentationTrainer:
 
         ### update model ###
         self.grad_scaler.scale(loss).backward()
-        self.grad_scaler.unscale_(self.optimizer)
-        adaptive_clip_grad(self.model.parameters())
-        self.grad_scaler.step(self.optimizer)
-        self.grad_scaler.update()
-        if self.use_ema:
-            self.avg_model.update_parameters(self.model)
-        if self.lr_scheduler is not None:
-            self.lr_scheduler.step()
+        if (self._train_count + 1) % self.num_accum_steps == 0:
+            self.grad_scaler.unscale_(self.optimizer)
+            adaptive_clip_grad(self.model.parameters())
+            self.grad_scaler.step(self.optimizer)
+            self.grad_scaler.update()
+            self.optimizer.zero_grad()
+            if self.use_ema:
+                self.avg_model.update_parameters(self.model)
+            if self.lr_scheduler is not None:
+                self.lr_scheduler.step()
         self._train_count += 1
         #####################
 
