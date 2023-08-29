@@ -11,6 +11,8 @@ __all__ = ['segmentation_metrics',
            'adaptive_clip_grad',
            'ModelEMA']
 
+
+
 def segmentation_metrics(logits, targets, activation='0-1', eps=1e-7, reduction='mean'):
     ''' This method compute pixel_acc, iou, dice, precision, recall at the same time.
         If the task is mulit-class classification, i.e. logits.shape == [batch, classes, H, W], 
@@ -18,41 +20,44 @@ def segmentation_metrics(logits, targets, activation='0-1', eps=1e-7, reduction=
     '''
     # convert targets to one hot encoding
     if len(targets.shape) == len(logits.shape) - 1:
-        if logits.shape[1] == 1: # binary classification
+        if logits.shape[1] == 1:  # binary classification
             y_true = targets[:, None].to(logits.dtype)
-        else:                    # mulit-class classification
+        else:  # mulit-class classification
             y_true = F.one_hot(targets, num_classes=logits.shape[1])
             y_true = y_true.to(logits.dtype).to(logits.device)
             y_true = y_true[:, None].transpose(1, -1)[..., 0]
     else:
-        y_true = targets
+        y_true = targets.to(logits.dtype).to(logits.device)
     # logits to probability
     if activation == 'softmax':
         y_pred = torch.softmax(logits, dim=1)
     elif activation == 'sigmoid':
         y_pred = torch.sigmoid(logits)
     elif activation == '0-1':
-        if logits.shape[1] == 1: # binary classification
+        if logits.shape[1] == 1:  # binary classification
             y_pred = (logits > 0).to(logits.dtype).to(logits.device)
-        else:                    # mulit-class classification
+        else:  # mulit-class classification
             y_pred = torch.argmax(logits, axis=1)
             y_pred = F.one_hot(y_pred, num_classes=logits.shape[1])
             y_pred = y_pred.to(logits.dtype).to(logits.device)
             y_pred = y_pred[:, None].transpose(1, -1)[..., 0]
 
-    axis = list(range(2, len(logits.shape))) # height and width
+    axis = list(range(2, len(logits.shape)))  # height and width
     # compute true postive, false positive and false negative
-    # use mean reduction instead of sum to ensure the numerical stability under float16
     tp = torch.sum(y_true * y_pred, dim=axis)
     fp = torch.sum(y_pred, dim=axis) - tp
     fn = torch.sum(y_true, dim=axis) - tp
 
-    pixel_acc = (torch.sum(tp, dim=1) + eps) / (torch.sum(tp, dim=1) + torch.sum(fp, dim=1) + eps)
+    if logits.shape[1] == 1:  # binary classification
+        tn = torch.sum((1 - y_true) * (1 - y_pred), dim=axis)
+        pixel_acc = (torch.sum(tp, dim=1) + torch.sum(tn, dim=1) + eps) / (torch.sum(tp, dim=1) + torch.sum(fp, dim=1) + torch.sum(fn, dim=1) + torch.sum(tn, dim=1) + eps)
+    else:
+        pixel_acc = (torch.sum(tp, dim=1) + eps) / (torch.sum(tp, dim=1) + torch.sum(fp, dim=1) + eps)
     iou = (tp + eps) / (fp + fn + tp + eps)
     dice = (2 * tp + eps) / (2 * tp + fp + fn + eps)
     precision = (tp + eps) / (tp + fp + eps)
     recall = (tp + eps) / (tp + fn + eps)
-    
+
     if reduction == 'mean':
         pixel_acc, iou, dice, precision, recall = pixel_acc.mean(), iou.mean(), dice.mean(), precision.mean(), recall.mean()
     return pixel_acc, iou, dice, precision, recall
