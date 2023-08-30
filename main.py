@@ -12,7 +12,7 @@ from torchvision import transforms
 import deeplabv3
 import mfpanet
 
-from utils import replace_batchnorm2d, smart_group_norm
+from utils import replace_batchnorm2d, smart_group_norm, RandomRotate90
 from data import SegmentationDatasetWrapper, LabelmeDataset, BinarySegmentationDataset
 from losses import FocalTverskyLoss
 from trainer import SegmentationTrainer
@@ -58,6 +58,7 @@ def main():
         spatial_transform = transforms.Compose([
             transforms.RandomResizedCrop(args.img_size),
             transforms.RandomErasing(0.2),
+            RandomRotate90(),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
         ])
@@ -68,6 +69,7 @@ def main():
     else:
         spatial_transform = transforms.Compose([
             transforms.Resize(args.img_size),
+            RandomRotate90(),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
         ])
