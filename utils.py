@@ -9,7 +9,8 @@ __all__ = ['segmentation_metrics',
            'smart_group_norm',
            'replace_batchnorm2d',
            'adaptive_clip_grad',
-           'ModelEMA']
+           'ModelEMA',
+           'RandomRotate90']
 
 
 
@@ -128,6 +129,14 @@ class ModelEMA(nn.Module):
 
     def load_state_dict(self, state_dict):
         self.module.load_state_dict(state_dict)
+
+
+class RandomRotate90:
+    def __call__(self, x):
+        return torch.rot90(x, random.randint(0, 3), dims=(1, 2))
+
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
 
 
 
