@@ -20,10 +20,12 @@ from trainer import SegmentationTrainer
 ### parse arguments ###
 parser = argparse.ArgumentParser()
 
+
 parser.add_argument('--batch-size', type=int, default=8)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--weight-decay', type=float, default=5e-5)
 parser.add_argument('--epochs', type=int, default=10)
+parser.add_argument('--num-accum-steps', type=int, default=1, help='Gradient accumulation.')
 parser.add_argument('--img-dir', type=str, help='Path of image directory')
 parser.add_argument('--mask-dir', type=str, help='Path of mask directory')
 parser.add_argument('--val-img-dir', type=str, help='Path of validation image directory')
@@ -121,7 +123,7 @@ def main():
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs*len(train_loader), args.lr * 1e-2)
     criterion = FocalTverskyLoss(activation='softmax')
 
-    trainer = SegmentationTrainer(model, optimizer, criterion,
+    trainer = SegmentationTrainer(model, optimizer, criterion, num_accum_steps=args.num_accum_steps,
                                   lr_scheduler=lr_scheduler, use_amp=True, use_cuda=True)
 
     history = trainer.fit(train_loader, val_loader=test_loader, epochs=args.epochs)
