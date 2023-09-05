@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .drn import drn_a_50
+from . import drn
 
 __all__ = ['MFPN', 'DAM', 'ASPP', 'MFPANet']
 
