@@ -50,10 +50,10 @@ class RCF(nn.Module):
         self.score_dsn5 = nn.Conv2d(21, classes, 1)
         self.score_fuse = nn.Conv2d(5 * classes, classes, 1)
 
-        self.register_buffer('weight_deconv2', self._make_bilinear_weights( 4, 1))
-        self.register_buffer('weight_deconv3', self._make_bilinear_weights( 8, 1))
-        self.register_buffer('weight_deconv4', self._make_bilinear_weights(16, 1))
-        self.register_buffer('weight_deconv5', self._make_bilinear_weights(16, 1))
+        self.register_buffer('weight_deconv2', self._make_bilinear_weights( 4, classes))
+        self.register_buffer('weight_deconv3', self._make_bilinear_weights( 8, classes))
+        self.register_buffer('weight_deconv4', self._make_bilinear_weights(16, classes))
+        self.register_buffer('weight_deconv5', self._make_bilinear_weights(16, classes))
 
         # init weights
         self.apply(self._init_weights)
