@@ -73,7 +73,7 @@ class RCF(nn.Module):
     def _init_weights(self, m):
         if isinstance(m, nn.Conv2d):
             m.weight.data.normal_(0, 0.01)
-            if m.weight.data.shape == torch.Size([1, 5, 1, 1]):
+            if m.weight.data.shape == torch.Size([self.classes, 5 * self.classes, 1, 1]):
                 nn.init.constant_(m.weight, 0.2)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
