@@ -59,7 +59,7 @@ class HED(torch.nn.Module):
         self.netScoreFou = torch.nn.Conv2d(in_channels=512, out_channels=classes, kernel_size=1, stride=1, padding=0)
         self.netScoreFiv = torch.nn.Conv2d(in_channels=512, out_channels=classes, kernel_size=1, stride=1, padding=0)
 
-        self.netCombine = torch.nn.Conv2d(in_channels=5*classes, out_channels=classes, kernel_size=1, stride=1, padding=0),
+        self.netCombine = torch.nn.Conv2d(in_channels=5*classes, out_channels=classes, kernel_size=1, stride=1, padding=0)
 
         if pretrained:
             self.load_state_dict({ strKey.replace('module', 'net'): tenWeight for strKey, tenWeight in torch.hub.load_state_dict_from_url(url='http://content.sniklaus.com/github/pytorch-hed/network-' + arguments_strModel + '.pytorch', file_name='hed-' + arguments_strModel).items() })
