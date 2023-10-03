@@ -5,7 +5,7 @@ from torchmetrics import MeanMetric, Accuracy
 from contextlib import nullcontext
 from tqdm import tqdm
 
-from utils import segmentation_metrics, adaptive_clip_grad
+from utils import segmentation_metrics, adaptive_clip_grad, ModelEMA
 
 __all__ = ['SegmentationTrainer']
 
